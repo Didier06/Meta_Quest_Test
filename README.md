@@ -78,6 +78,3 @@ To run this project, the following packages (often installable via *Meta XR All-
 3. Connect a **Meta Quest 3** headset via Link or build the APK (`Build and Run`).
 4. Once in the headset, allow access to spatial data (Passthrough).
 5. Interact with the cubes and sphere: they will fall onto your real floor!
-
----
-*Project realized with the assistance of Antigravity AI.*
