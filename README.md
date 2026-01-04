@@ -1,0 +1,83 @@
+# Unity Meta Quest 3 Project: Physics Interaction & Passthrough
+
+![Scene Preview](Assets/images/scene_preview.png)
+
+This project is a technical demonstration for the **Meta Quest 3**, featuring **Passthrough (Mixed Reality)**, advanced physics, and the **Oculus Interaction SDK**.
+
+The application allows users to manipulate virtual objects within their real-world environment using Hand Tracking or Controllers.
+
+## 🌟 Key Features
+
+### 1. Mixed Reality (Passthrough)
+
+- Uses the **AR/Passthrough** camera to overlay virtual elements onto the real world.
+- The scene background is transparent, allowing the user's physical environment to be visible.
+
+### 2. Building Blocks
+
+The project is built upon Meta's modular "Building Blocks" architecture:
+
+- **Camera Rig**: Manages the stereoscopic camera and head tracking.
+- **Grabbable Item**: Pre-configured components to make objects grabbable.
+- **Passthrough**: Manages the video feed of the real world.
+
+### 3. Physics & Gravity
+
+- **Invisible Floor**: A plane configured as an invisible Collider aligned with the real floor, preventing objects from falling infinitely.
+- **Reactive Objects**:
+  - **Interactive Cubes**: Basic blocks subject to gravity, which can be thrown, stacked, or pushed.
+  - **Custom Prefabs (e.g., Stirling Engine)**: Integration of complex 3D models within a physical shell (Parent "Building Block" + Child "Visual").
+  - Precise collision (Continuous Dynamic) to prevent objects from clipping through the floor or intersecting each other.
+
+### 4. Custom Scripts
+
+- **SlowRotate.cs**: A script allowing an object (like a sphere) to rotate automatically.
+  - *Smart Interaction*: Rotation stops automatically when the user grabs the object and resumes when released (via `Pointable Unity Event Wrapper`).
+
+## 🛠️ Technical Architecture
+
+### Interactive Object Structure
+
+To ensure stable physics with imported 3D models, we use the "Driver / Passenger" structure:
+
+- **Parent (Empty GameObject or Invisible Cube)**:
+  - Contains the `Rigidbody` (Physics Engine).
+  - Contains the `Box Collider` (Simple collision shell).
+  - Contains the `Grabbable` scripts (Interaction Logic).
+- **Child (3D Model)**:
+  - Contains only the `Mesh Filter` and `Mesh Renderer`.
+  - No physics on the child to avoid conflicts.
+
+### Physics Configuration
+
+- **Floor**: Flattened `Box Collider` (negative Y offset) to prevent physical explosion effects on startup.
+- **Objects**: `Collision Detection` set to **Continuous Dynamic** to prevent tunneling (passing through walls) during fast movements.
+
+## 📦 Tech Stack & SDKs
+
+### Why not AR Foundation?
+
+Although AR Foundation is excellent for cross-platform mobile (iOS/Android), for this specific **Meta Quest 3** project, we prioritized the **Native Meta XR SDKs**.
+
+- **Direct Access**: They offer more direct and optimized access to Quest-exclusive features (High-fidelity Hand Tracking, Scene Understanding, Depth API).
+- **Building Blocks**: Using pre-fabricated "blocks" drastically speeds up development compared to the manual setup required under AR Foundation.
+- **Advanced Interactions**: The Interaction SDK provides hand physics and gestures (Poke, Grab, Ray) far richer than the basic standard.
+
+### Required Meta SDKs
+
+To run this project, the following packages (often installable via *Meta XR All-in-One SDK*) are essential:
+
+1. **Meta XR Core SDK**: The core system (camera management, tracking, inputs).
+2. **Meta XR Interaction SDK**: Handles all grabbing logic, virtual hands, and gesture detection.
+3. **Meta XR Building Blocks**: Provides the "turnkey" components (Camera Rig, Passthrough, Grabbable Item) used here.
+
+## 🚀 How to Run
+
+1. Open the project in **Unity 6** (or a Meta XR compatible version).
+2. Ensure the platform is set to **Android** (Settings > Build Settings).
+3. Connect a **Meta Quest 3** headset via Link or build the APK (`Build and Run`).
+4. Once in the headset, allow access to spatial data (Passthrough).
+5. Interact with the cubes and sphere: they will fall onto your real floor!
+
+---
+*Project realized with the assistance of Antigravity AI.*
