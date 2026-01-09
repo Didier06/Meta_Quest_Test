@@ -31,6 +31,9 @@ public class MqttManager : MonoBehaviour
     
     // Store objects that need continuous rotation: GameObject -> RotationSpeed (Euler/sec)
     private Dictionary<GameObject, Vector3> rotatingObjects = new Dictionary<GameObject, Vector3>();
+    // Store objects that need smooth transition to a target rotation: Transform -> TargetLocalRotation
+    private Dictionary<Transform, Quaternion> smoothTargets = new Dictionary<Transform, Quaternion>();
+    public float smoothingSpeed = 5.0f;
 
     [Serializable]
     public class ObjectTransformData
@@ -40,6 +43,7 @@ public class MqttManager : MonoBehaviour
         public Vector3 rotation; // Absolute rotation
         public Vector3 scale;    // Zoom/Scale (default 0,0,0 if omitted)
         public Vector3 rotationSpeed; // Continuous rotation speed (degrees/sec)
+        public float temperature; // Temperature for thermometer
     }
 
     void Start()
@@ -151,8 +155,8 @@ public class MqttManager : MonoBehaviour
             }
         }
 
-        // Test sending positions
-        if (Input.GetKeyDown(KeyCode.S))
+        // Test sending positions (New Input System)
+        if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.sKey.wasPressedThisFrame)
         {
             PublishExampleMessage();
         }
@@ -174,54 +178,130 @@ public class MqttManager : MonoBehaviour
             }
             foreach (var dead in toRemove) rotatingObjects.Remove(dead);
         }
+
+        // Apply smooth target rotations (e.g. Thermometer)
+        if (smoothTargets.Count > 0)
+        {
+            List<Transform> finished = new List<Transform>();
+            foreach (var kvp in smoothTargets)
+            {
+                Transform t = kvp.Key;
+                if (t != null)
+                {
+                    t.localRotation = Quaternion.Slerp(t.localRotation, kvp.Value, Time.deltaTime * smoothingSpeed);
+                    
+                    // Stop if close enough to save performance
+                    if (Quaternion.Angle(t.localRotation, kvp.Value) < 0.1f) finished.Add(t);
+                }
+                else
+                {
+                    finished.Add(t);
+                }
+            }
+            foreach (var t in finished) smoothTargets.Remove(t);
+        }
     }
 
     void ProcessMessage(string json)
     {
         try
         {
-            // Parse JSON
+            // Parse JSON into data object
             ObjectTransformData data = JsonUtility.FromJson<ObjectTransformData>(json);
 
             if (data != null && !string.IsNullOrEmpty(data.targetName))
             {
-                // Find method: flexible but potentially slow if many objects. 
-                // Creating a lookup Dictionary is better for performance if managing many objects.
                 GameObject target = GameObject.Find(data.targetName);
 
                 if (target != null)
                 {
-                    target.transform.position = data.position;
-                    
-                    // Apply absolute rotation if it's not zero
-                    if (data.rotation != Vector3.zero) 
+                    Rigidbody rb = target.GetComponent<Rigidbody>();
+                    bool hasRb = (rb != null);
+
+                    // --- POSITION ---
+                    // Only update if key provided or value is non-zero (fallback)
+                    // (Simple "Contains" check helps distinguish "missing" from "explicit 0")
+                    if (json.Contains("\"position\""))
                     {
-                        target.transform.rotation = Quaternion.Euler(data.rotation);
+                        if (hasRb)
+                        {
+                            rb.position = data.position; // Teleport physics
+                            // If kinematic, transform update is implicit, but for dynamic this is safer
+                        }
+                        else
+                        {
+                            target.transform.position = data.position;
+                        }
                     }
 
-                    // Apply Scale (Zoom) - Ignore if zero (missing in JSON)
-                    if (data.scale != Vector3.zero)
+                    // --- ROTATION ---
+                    // Fix: Check if JSON contains "rotation" key to allow setting 0,0,0
+                    if (json.Contains("\"rotation\""))
+                    {
+                        Quaternion newRot = Quaternion.Euler(data.rotation);
+                        if (hasRb)
+                        {
+                            rb.rotation = newRot;
+                        }
+                        else
+                        {
+                            target.transform.rotation = newRot;
+                        }
+                    }
+
+                    // --- SCALE ---
+                    if (json.Contains("\"scale\"") && data.scale != Vector3.zero)
                     {
                         target.transform.localScale = data.scale;
                     }
 
-                    // Handle Continuous Rotation
-                    if (data.rotationSpeed != Vector3.zero)
+                    // --- CONTINUOUS ROTATION ---
+                    if (json.Contains("\"rotationSpeed\""))
                     {
-                        // Add or Update rotation speed
-                        if (!rotatingObjects.ContainsKey(target))
-                            rotatingObjects.Add(target, data.rotationSpeed);
+                        if (data.rotationSpeed != Vector3.zero)
+                        {
+                            if (!rotatingObjects.ContainsKey(target))
+                                rotatingObjects.Add(target, data.rotationSpeed);
+                            else
+                                rotatingObjects[target] = data.rotationSpeed;
+                        }
                         else
-                            rotatingObjects[target] = data.rotationSpeed;
+                        {
+                            // Explicitly set to 0 -> Stop
+                            if (rotatingObjects.ContainsKey(target))
+                                rotatingObjects.Remove(target);
+                        }
                     }
-                    else
+
+                    // --- TEMPERATURE (Thermometer Pointer) ---
+                    if (json.Contains("\"temperature\""))
                     {
-                        // If speed is zero, stop rotating
-                        if (rotatingObjects.ContainsKey(target))
-                            rotatingObjects.Remove(target);
+                        // Find "Pointer" anywhere inside the target object
+                        Transform pointer = FindDeepChild(target.transform, "Pointer");
+                        if (pointer != null)
+                        {
+                            // Formula : 30°C max, rotation on Y axis
+                            float angle = -data.temperature * 180f / 30f;
+                            Quaternion targetRot = Quaternion.Euler(0f, angle, 0f);
+                            
+                            // Add to smoothing list instead of setting directly
+                            if (!smoothTargets.ContainsKey(pointer))
+                                smoothTargets.Add(pointer, targetRot);
+                            else
+                                smoothTargets[pointer] = targetRot;
+
+                            Debug.Log($"Updated Temperature: {data.temperature}°C -> Target Angle: {angle}");
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"Target '{data.targetName}' received temperature but has no child named 'Pointer'.");
+                        }
                     }
-                    
-                    Debug.Log($"Updated object '{data.targetName}' | Pos: {data.position} | Scale: {data.scale} | RotSpeed: {data.rotationSpeed}");
+
+                    // Physics WakeUp ensures changes are registered immediately
+                    if (hasRb && !rb.isKinematic) rb.WakeUp();
+
+                    Debug.Log($"MQTT Update '{data.targetName}': Pos={(json.Contains("\"position\"") ? "Set" : "Skip")} Temp={(json.Contains("\"temperature\"") ? data.temperature.ToString() : "N/A")}");
                 }
                 else
                 {
@@ -233,6 +313,18 @@ public class MqttManager : MonoBehaviour
         {
             Debug.LogError($"Error parsing/applying JSON update: {e.Message} \nJSON: {json}");
         }
+    }
+
+    // Helper to find a child recursively
+    Transform FindDeepChild(Transform aParent, string aName)
+    {
+        foreach (Transform child in aParent)
+        {
+            if (child.name == aName) return child;
+            var result = FindDeepChild(child, aName);
+            if (result != null) return result;
+        }
+        return null;
     }
 
     public void PublishExampleMessage()

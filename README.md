@@ -61,6 +61,23 @@ You can control Position, Rotation, Scale (Zoom), and Continuous Rotation Speed.
 - **scale**: (Optional) Updates local scale. Set to > 0.
 - **rotationSpeed**: (Optional) Sets a continuous rotation speed (degrees/second). Set to `0,0,0` to stop.
 
+#### 🌡️ Thermometer Control
+
+To control the thermometer needle smoothly:
+
+```json
+{
+  "targetName": "thermometer",
+  "temperature": 22.5
+}
+```
+
+- **temperature**: Value in °C (0 to 30).
+- The script looks for a child object named **"Pointer"** inside the target and rotates it on the Y-axis.
+- The movement is **interpolated (smooth)** for a realistic effect.
+
+![Thermometer Setup](Assets/images/thermometer.png)
+
 #### 🔐 Configuration & Secrets
 
 Credentials are secure and **not committed** to Git.
