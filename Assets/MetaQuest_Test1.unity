@@ -135,7 +135,7 @@ GameObject:
   - component: {fileID: 47994913}
   - component: {fileID: 47994912}
   m_Layer: 0
-  m_Name: '[BuildingBlock] Cube2'
+  m_Name: Cube2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -381,7 +381,7 @@ GameObject:
   - component: {fileID: 300712518}
   - component: {fileID: 300712517}
   m_Layer: 0
-  m_Name: '[BuildingBlock] Prefab Sphere'
+  m_Name: Sphere1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1013,6 +1013,60 @@ MonoBehaviour:
     _installationVariants:
     - _memberName: mode
       _value: '{"value__":0}'
+--- !u!1 &677970535
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 677970537}
+  - component: {fileID: 677970536}
+  m_Layer: 0
+  m_Name: Mqtt
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &677970536
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 677970535}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eadbb8f72f67b3d4e8547dd197ee1ad7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MqttManager
+  mqttBroker: mqtt.univ-cotedazur.fr
+  mqttPort: 1883
+  useEncrypted: 1
+  mqttTopic: FABLAB_21_22/unity/metaquest/in
+  mqttTopicOut: FABLAB_21_22/unity/metaquest/out
+  username: 
+  password: 
+  processMessages: 1
+  minUpdateInterval: 0.05
+  reconnectDelay: 5
+--- !u!4 &677970537
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 677970535}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.219, y: 0.82, z: -0.549}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &700188718
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2092,7 +2146,7 @@ GameObject:
   - component: {fileID: 1474445128}
   - component: {fileID: 1474445127}
   m_Layer: 0
-  m_Name: '[BuildingBlock] Cube1'
+  m_Name: Cube1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2750,3 +2804,4 @@ SceneRoots:
   - {fileID: 47994918}
   - {fileID: 411339686}
   - {fileID: 300712523}
+  - {fileID: 677970537}

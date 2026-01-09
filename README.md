@@ -34,6 +34,48 @@ The project is built upon Meta's modular "Building Blocks" architecture:
 - **SlowRotate.cs**: A script allowing an object (like a sphere) to rotate automatically.
   - *Smart Interaction*: Rotation stops automatically when the user grabs the object and resumes when released (via `Pointable Unity Event Wrapper`).
 
+### 5. MCC Connectivity (Remote Control)
+
+This project includes a powerful **MQTT Manager** allowing you to control any object in the scene remotely by sending JSON messages.
+
+- **Topic IN**: `FABLAB_21_22/unity/metaquest/in` (Receives commands)
+- **Topic OUT**: `FABLAB_21_22/unity/metaquest/out` (Sends status/hello)
+
+#### 📡 Supported JSON Commands
+
+You can control Position, Rotation, Scale (Zoom), and Continuous Rotation Speed. The script updates the target object by finding it via `targetName`.
+
+```json
+{
+  "targetName": "Cube",
+  "position": { "x": 0.0, "y": 1.5, "z": 2.0 },
+  "rotation": { "x": 0.0, "y": 45.0, "z": 0.0 },
+  "scale": { "x": 1.5, "y": 1.5, "z": 1.5 },
+  "rotationSpeed": { "x": 10.0, "y": 90.0, "z": 0.0 }
+}
+```
+
+- **targetName**: Name of the GameObject in the Hierarchy.
+- **position**: Updates world position.
+- **rotation**: (Optional) Updates absolute rotation (Euler angles).
+- **scale**: (Optional) Updates local scale. Set to > 0.
+- **rotationSpeed**: (Optional) Sets a continuous rotation speed (degrees/second). Set to `0,0,0` to stop.
+
+#### 🔐 Configuration & Secrets
+
+Credentials are secure and **not committed** to Git.
+Create a file at `Assets/Resources/secrets.json`:
+
+```json
+{
+    "mqttUser": "your_user",
+    "mqttPassword": "your_password",
+    "mqttPort": 8443
+}
+```
+
+*Note: If port 8443 or 8883 is used, SSL/TLS encryption is automatically enabled.*
+
 ## 🛠️ Technical Architecture
 
 ### Interactive Object Structure
