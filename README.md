@@ -78,6 +78,51 @@ To control the thermometer needle smoothly:
 
 ![Thermometer Setup](Assets/images/thermometer.png)
 
+#### ⏲️ Pressure Gauge (Manometer) Control
+
+Works exactly like the thermometer but for pressure:
+
+```json
+{
+  "targetName": "manometer",
+  "pressure": 5.0
+}
+```
+
+- **pressure**: Value in Bar (0 to 10).
+- Looks for a child named **"Pointer"** and rotates it.
+- Default scaling: 10 Bar = 180 degrees rotation.
+
+- Default scaling: 10 Bar = 180 degrees rotation.
+
+### 6. Gauge Bindings (Dedicated Topics)
+
+You can control specific gauges by listening to **dedicated topics** (Raw text values, not JSON). This is ideal for connecting real sensors directly.
+The system uses a **Universal Gauge** logic for all types (Thermometer, Manometer, Speedometer, etc.).
+
+**Setup in Inspector:**
+
+1. Select the **MqttManager** object.
+2. Expand the **Gauge Bindings** list.
+3. Add a new element and configure:
+   - **Topic**: e.g., `sensor/kitchen/temp`
+   - **Target Name**: e.g., `Thermometer_Kitchen`
+   - **Type**: Select `Gauge`.
+
+**Calibration:**
+
+- **Min Value / Max Value**: Defines the sensor range (e.g. -10 to 40).
+- **Max Angle**: How many degrees the needle rotates for the full range (e.g. 180).
+- **Value Child**: Name of the TextMeshPro object to display the value (default: "Value"). Leave empty to disable text.
+
+**Formula used:**
+`Angle = -Value * (MaxAngle / (MaxValue - MinValue))`
+*(The needle rotates proportionally to the range amplitude. If Value = 0, Angle = 0).*
+
+**Example:**
+
+- Publish `24.5` to `sensor/kitchen/temp` -> Updates needle based on your Min/Max settings.
+
 #### 🔐 Configuration & Secrets
 
 Credentials are secure and **not committed** to Git.

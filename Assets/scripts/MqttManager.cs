@@ -6,6 +6,7 @@ using uPLibrary.Networking.M2Mqtt;
 using uPLibrary.Networking.M2Mqtt.Messages;
 using System.Net;
 using System.Collections.Generic;
+using TMPro;
 
 public class MqttManager : MonoBehaviour
 {
@@ -44,7 +45,34 @@ public class MqttManager : MonoBehaviour
         public Vector3 scale;    // Zoom/Scale (default 0,0,0 if omitted)
         public Vector3 rotationSpeed; // Continuous rotation speed (degrees/sec)
         public float temperature; // Temperature for thermometer
+        public float pressure;    // Pressure for manometer
     }
+
+    public enum GaugeType
+    {
+        Gauge,           // Standard Gauge with Pointer & Calibration
+        RotationSpeed,   // Continuous Rotation (Motor)
+        RotationAbsolute // Absolute Rotation of the object
+    }
+
+    [Serializable]
+    public class TopicBinding
+    {
+        public string topic;       // Specific topic
+        public string targetName;  // Target Object Name
+        public GaugeType type;     // How to interpret the value
+
+        [Header("Calibration (Gauge Only)")]
+        public float minValue = 0f;
+        public float maxValue = 100f;
+        public float maxAngle = 180f;
+
+        [Header("UI Display (Gauge Only)")]
+        public string valueChild = "Value"; // Name of child with TMP for Value
+    }
+
+    [Header("Gauge Bindings")]
+    public List<TopicBinding> gaugeBindings = new List<TopicBinding>();
 
     void Start()
     {
@@ -77,6 +105,7 @@ public class MqttManager : MonoBehaviour
         {
             if (client == null || !client.IsConnected)
             {
+                Debug.Log("Connecting to MQTT broker...");
                 Connect();
             }
             yield return new WaitForSeconds(reconnectDelay);
@@ -114,7 +143,25 @@ public class MqttManager : MonoBehaviour
                 Debug.Log($"Connected to MQTT Broker: {mqttBroker}:{mqttPort}");
                 client.MqttMsgPublishReceived += Client_MqttMsgPublishReceived;
                 client.ConnectionClosed += Client_ConnectionClosed;
-                client.Subscribe(new string[] { mqttTopic }, new byte[] { MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE });
+                
+                // Subscribe to Main JSON Topic
+                List<string> topics = new List<string>();
+                List<byte> qos = new List<byte>();
+
+                topics.Add(mqttTopic);
+                qos.Add(MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE);
+
+                // Subscribe to all Gauge Bindings
+                foreach (var binding in gaugeBindings)
+                {
+                    if (!string.IsNullOrEmpty(binding.topic) && !topics.Contains(binding.topic))
+                    {
+                        topics.Add(binding.topic);
+                        qos.Add(MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE);
+                    }
+                }
+
+                client.Subscribe(topics.ToArray(), qos.ToArray());
 
                 // Send Hello Message
                 string helloMsg = "Hello from meta Quest 3";
@@ -123,7 +170,7 @@ public class MqttManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError("MQTT Connection Failed: " + e.Message);
+            Debug.LogError($"MQTT Connection Failed: {e.Message}");
         }
     }
 
@@ -133,10 +180,33 @@ public class MqttManager : MonoBehaviour
     }
 
     private void Client_MqttMsgPublishReceived(object sender, MqttMsgPublishEventArgs e)
-    {
+        {
         string msg = Encoding.UTF8.GetString(e.Message);
-        // Enqueue message to be processed in the main thread
-        messageQueue.Enqueue(msg);
+        string topic = e.Topic;
+
+        // Dispatch based on topic
+        if (topic == mqttTopic)
+        {
+            // Main JSON Channel
+            messageQueue.Enqueue(msg);
+        }
+        else
+        {
+            // Check bindings
+            foreach (var binding in gaugeBindings)
+            {
+                if (binding.topic == topic)
+                {
+                    // Enqueue a special "BindingCommand" or handle on main thread via a wrapper
+                    // To keep it simple, we wrap it in a pseudo-JSON or struct, 
+                    // BUT simplest is to just Enqueue a specially formatted string we can parse later
+                    // Or better: Use a thread-safe action queue. 
+                    // For now, let's prefix the message with "BINDING|Index|" so Update knows.
+                    int index = gaugeBindings.IndexOf(binding); // Warning: O(N) but reliable
+                    messageQueue.Enqueue($"BINDING|{index}|{msg}");
+                }
+            }
+        }
     }
 
     void Update()
@@ -151,7 +221,14 @@ public class MqttManager : MonoBehaviour
             string msg;
             while (messageQueue.TryDequeue(out msg))
             {
-                ProcessMessage(msg);
+                if (msg.StartsWith("BINDING|"))
+                {
+                    ProcessBindingMessage(msg);
+                }
+                else
+                {
+                    ProcessMessage(msg);
+                }
             }
         }
 
@@ -199,6 +276,95 @@ public class MqttManager : MonoBehaviour
                 }
             }
             foreach (var t in finished) smoothTargets.Remove(t);
+        }
+    }
+
+    void ProcessBindingMessage(string rawMsg)
+    {
+        try
+        {
+            // Format: BINDING|Index|Value
+            string[] parts = rawMsg.Split(new char[] { '|' }, 3);
+            if (parts.Length < 3) return;
+
+            int index = int.Parse(parts[1]);
+            string valueStr = parts[2];
+            
+            if (index >= 0 && index < gaugeBindings.Count)
+            {
+                var binding = gaugeBindings[index];
+                if (float.TryParse(valueStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out float value))
+                {
+                    ApplyBindingValue(binding, value);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Error processing binding: {e.Message}");
+        }
+    }
+
+    void ApplyBindingValue(TopicBinding binding, float value)
+    {
+        GameObject target = GameObject.Find(binding.targetName);
+        if (target == null) return;
+
+        switch (binding.type)
+        {
+            case GaugeType.Gauge: 
+                // Unified Logic: Uses Min/Max/Angle from binding
+                
+                // 1. Rotate Pointer "Pointer"
+                Transform pointer = FindDeepChild(target.transform, "Pointer");
+                if (pointer != null)
+                {
+                    // Clamp value to ensure it stays within range
+                    float clampedValue = Mathf.Clamp(value, binding.minValue, binding.maxValue);
+
+                    // Direct Formula (Simple Rule of Three)
+                    // angle = -val * (maxAngle / maxValue)
+                    float max = binding.maxValue - binding.minValue;
+                    float ratio = (max != 0) ? (binding.maxAngle / max) : 0f;
+                    float angle = -clampedValue * ratio;
+                    
+                    Quaternion targetRot = Quaternion.Euler(0f, angle, 0f);
+                    if (!smoothTargets.ContainsKey(pointer)) smoothTargets.Add(pointer, targetRot);
+                    else smoothTargets[pointer] = targetRot;
+                }
+
+                // 2. Update Value Text (Optional)
+                if (!string.IsNullOrEmpty(binding.valueChild))
+                {
+                    Transform valueT = FindDeepChild(target.transform, binding.valueChild);
+                    if (valueT != null)
+                    {
+                        var tmp = valueT.GetComponent<TMP_Text>();
+                        if (tmp != null) tmp.text = value.ToString("F1");
+                    }
+                }
+                break;
+
+            case GaugeType.RotationSpeed:
+                // Apply continuous rotation on Y axis by default
+                Vector3 speed = new Vector3(0, value, 0); 
+                if (value == 0)
+                {
+                    if (rotatingObjects.ContainsKey(target)) rotatingObjects.Remove(target);
+                }
+                else
+                {
+                    if (!rotatingObjects.ContainsKey(target)) rotatingObjects.Add(target, speed);
+                    else rotatingObjects[target] = speed;
+                }
+                break;
+                
+             case GaugeType.RotationAbsolute:
+                // Rotation on Y axis
+                Quaternion absRot = Quaternion.Euler(0, value, 0);
+                 if (!smoothTargets.ContainsKey(target.transform)) smoothTargets.Add(target.transform, absRot);
+                 else smoothTargets[target.transform] = absRot;
+                 break;
         }
     }
 
@@ -276,21 +442,32 @@ public class MqttManager : MonoBehaviour
                     // --- TEMPERATURE (Thermometer Pointer) ---
                     if (json.Contains("\"temperature\""))
                     {
-                        // Find "Pointer" anywhere inside the target object
+                        // 1. Try to find custom calibration
+                        var binding = gaugeBindings.Find(x => x.targetName == data.targetName && x.type == GaugeType.Gauge);
+                        
+                        // 2. Defaults
+                        float min = (binding != null) ? binding.minValue : 0f;
+                        float max = (binding != null) ? binding.maxValue : 30f;
+                        float maxAng = (binding != null) ? binding.maxAngle : 180f;
+
+                        // 3. Clamp (Safety)
+                        float val = Mathf.Clamp(data.temperature, min, max);
+
                         Transform pointer = FindDeepChild(target.transform, "Pointer");
                         if (pointer != null)
                         {
-                            // Formula : 30°C max, rotation on Y axis
-                            float angle = -data.temperature * 180f / 30f;
+                            // 4. Direct Formula (Simple Rule of Three) with user fix
+                            // angle = -val * (maxAngle / (max - min))
+                            float range = max - min;
+                            float ratio = (range != 0) ? (maxAng / range) : 0f;
+                            float angle = -val * ratio;
+
                             Quaternion targetRot = Quaternion.Euler(0f, angle, 0f);
                             
-                            // Add to smoothing list instead of setting directly
-                            if (!smoothTargets.ContainsKey(pointer))
-                                smoothTargets.Add(pointer, targetRot);
-                            else
-                                smoothTargets[pointer] = targetRot;
+                            if (!smoothTargets.ContainsKey(pointer)) smoothTargets.Add(pointer, targetRot);
+                            else smoothTargets[pointer] = targetRot;
 
-                            Debug.Log($"Updated Temperature: {data.temperature}°C -> Target Angle: {angle}");
+                            Debug.Log($"Updated Temperature: {val} -> Angle: {angle}");
                         }
                         else
                         {
@@ -298,10 +475,41 @@ public class MqttManager : MonoBehaviour
                         }
                     }
 
+                    // --- PRESSURE (Manometer Pointer) ---
+                    if (json.Contains("\"pressure\""))
+                    {
+                        var binding = gaugeBindings.Find(x => x.targetName == data.targetName && x.type == GaugeType.Gauge);
+                        float min = (binding != null) ? binding.minValue : 0f;
+                        float max = (binding != null) ? binding.maxValue : 10f;
+                        float maxAng = (binding != null) ? binding.maxAngle : 180f;
+
+                        float val = Mathf.Clamp(data.pressure, min, max);
+
+                        Transform pointer = FindDeepChild(target.transform, "Pointer");
+                        if (pointer != null)
+                        {
+                            // Simple Ratio with user fix
+                            float range = max - min;
+                            float ratio = (range != 0) ? (maxAng / range) : 0f;
+                            float angle = -val * ratio;
+                            
+                            Quaternion targetRot = Quaternion.Euler(0f, angle, 0f);
+                            
+                            if (!smoothTargets.ContainsKey(pointer)) smoothTargets.Add(pointer, targetRot);
+                            else smoothTargets[pointer] = targetRot;
+
+                            Debug.Log($"Updated Pressure: {val} -> Angle: {angle}");
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"Target '{data.targetName}' received pressure but has no child named 'Pointer'.");
+                        }
+                    }
+
                     // Physics WakeUp ensures changes are registered immediately
                     if (hasRb && !rb.isKinematic) rb.WakeUp();
 
-                    Debug.Log($"MQTT Update '{data.targetName}': Pos={(json.Contains("\"position\"") ? "Set" : "Skip")} Temp={(json.Contains("\"temperature\"") ? data.temperature.ToString() : "N/A")}");
+                    Debug.Log($"MQTT Update '{data.targetName}': Pos={(json.Contains("\"position\"") ? "Set" : "Skip")} Temp/Press={(json.Contains("\"temperature\"") ? data.temperature.ToString() : (json.Contains("\"pressure\"") ? data.pressure.ToString() : "N/A"))}");
                 }
                 else
                 {

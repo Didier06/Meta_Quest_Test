@@ -1205,6 +1205,15 @@ MonoBehaviour:
   processMessages: 1
   minUpdateInterval: 0.05
   reconnectDelay: 5
+  smoothingSpeed: 5
+  gaugeBindings:
+  - topic: FABLAB_21_22/unity/metaquest/in
+    targetName: thermometer
+    type: 0
+    minValue: -10
+    maxValue: 40
+    maxAngle: 300
+    valueChild: 
 --- !u!4 &677970537
 Transform:
   m_ObjectHideFlags: 0
@@ -2686,6 +2695,18 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5852802797344728874, guid: 48d7391d2f91c9a42b6431a3016b4272, type: 3}
       propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5852802797344728874, guid: 48d7391d2f91c9a42b6431a3016b4272, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5852802797344728874, guid: 48d7391d2f91c9a42b6431a3016b4272, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5852802797344728874, guid: 48d7391d2f91c9a42b6431a3016b4272, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6708393213409612773, guid: 48d7391d2f91c9a42b6431a3016b4272, type: 3}
