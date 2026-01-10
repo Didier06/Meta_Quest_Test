@@ -44,8 +44,7 @@ public class MqttManager : MonoBehaviour
         public Vector3 rotation; // Absolute rotation
         public Vector3 scale;    // Zoom/Scale (default 0,0,0 if omitted)
         public Vector3 rotationSpeed; // Continuous rotation speed (degrees/sec)
-        public float temperature; // Temperature for thermometer
-        public float pressure;    // Pressure for manometer
+        public float gauge_value; // Unified generic value
     }
 
     public enum GaugeType
@@ -439,24 +438,24 @@ public class MqttManager : MonoBehaviour
                         }
                     }
 
-                    // --- TEMPERATURE (Thermometer Pointer) ---
-                    if (json.Contains("\"temperature\""))
+                    // --- GAUGE VALUE (Universal) ---
+                    if (json.Contains("\"gauge_value\""))
                     {
                         // 1. Try to find custom calibration
                         var binding = gaugeBindings.Find(x => x.targetName == data.targetName && x.type == GaugeType.Gauge);
                         
-                        // 2. Defaults
+                        // 2. Defaults (Standard 0-100 if no binding found)
                         float min = (binding != null) ? binding.minValue : 0f;
-                        float max = (binding != null) ? binding.maxValue : 30f;
+                        float max = (binding != null) ? binding.maxValue : 100f;
                         float maxAng = (binding != null) ? binding.maxAngle : 180f;
 
                         // 3. Clamp (Safety)
-                        float val = Mathf.Clamp(data.temperature, min, max);
+                        float val = Mathf.Clamp(data.gauge_value, min, max);
 
                         Transform pointer = FindDeepChild(target.transform, "Pointer");
                         if (pointer != null)
                         {
-                            // 4. Direct Formula (Simple Rule of Three) with user fix
+                            // 4. Direct Formula
                             // angle = -val * (maxAngle / (max - min))
                             float range = max - min;
                             float ratio = (range != 0) ? (maxAng / range) : 0f;
@@ -467,49 +466,18 @@ public class MqttManager : MonoBehaviour
                             if (!smoothTargets.ContainsKey(pointer)) smoothTargets.Add(pointer, targetRot);
                             else smoothTargets[pointer] = targetRot;
 
-                            Debug.Log($"Updated Temperature: {val} -> Angle: {angle}");
+                            Debug.Log($"Updated Gauge '{data.targetName}': {val} -> Angle: {angle}");
                         }
                         else
                         {
-                            Debug.LogWarning($"Target '{data.targetName}' received temperature but has no child named 'Pointer'.");
-                        }
-                    }
-
-                    // --- PRESSURE (Manometer Pointer) ---
-                    if (json.Contains("\"pressure\""))
-                    {
-                        var binding = gaugeBindings.Find(x => x.targetName == data.targetName && x.type == GaugeType.Gauge);
-                        float min = (binding != null) ? binding.minValue : 0f;
-                        float max = (binding != null) ? binding.maxValue : 10f;
-                        float maxAng = (binding != null) ? binding.maxAngle : 180f;
-
-                        float val = Mathf.Clamp(data.pressure, min, max);
-
-                        Transform pointer = FindDeepChild(target.transform, "Pointer");
-                        if (pointer != null)
-                        {
-                            // Simple Ratio with user fix
-                            float range = max - min;
-                            float ratio = (range != 0) ? (maxAng / range) : 0f;
-                            float angle = -val * ratio;
-                            
-                            Quaternion targetRot = Quaternion.Euler(0f, angle, 0f);
-                            
-                            if (!smoothTargets.ContainsKey(pointer)) smoothTargets.Add(pointer, targetRot);
-                            else smoothTargets[pointer] = targetRot;
-
-                            Debug.Log($"Updated Pressure: {val} -> Angle: {angle}");
-                        }
-                        else
-                        {
-                            Debug.LogWarning($"Target '{data.targetName}' received pressure but has no child named 'Pointer'.");
+                            Debug.LogWarning($"Target '{data.targetName}' received gauge_value but has no child named 'Pointer'.");
                         }
                     }
 
                     // Physics WakeUp ensures changes are registered immediately
                     if (hasRb && !rb.isKinematic) rb.WakeUp();
 
-                    Debug.Log($"MQTT Update '{data.targetName}': Pos={(json.Contains("\"position\"") ? "Set" : "Skip")} Temp/Press={(json.Contains("\"temperature\"") ? data.temperature.ToString() : (json.Contains("\"pressure\"") ? data.pressure.ToString() : "N/A"))}");
+                    Debug.Log($"MQTT Update '{data.targetName}': Pos={(json.Contains("\"position\"") ? "Set" : "Skip")} Gauge={(json.Contains("\"gauge_value\"") ? data.gauge_value.ToString() : "N/A")}");
                 }
                 else
                 {
@@ -539,7 +507,8 @@ public class MqttManager : MonoBehaviour
     {
         if (client != null && client.IsConnected)
         {
-            string msg = "{\"targetName\":\"Cube\", \"position\":{\"x\":0,\"y\":1,\"z\":2}, \"scale\":{\"x\":1.5,\"y\":1.5,\"z\":1.5}, \"rotationSpeed\":{\"x\":0,\"y\":45,\"z\":0}}";
+            // Example with generic gauge value
+            string msg = "{\"targetName\":\"Cube\", \"position\":{\"x\":0,\"y\":1,\"z\":2}, \"gauge_value\": 50.0}";
             client.Publish(mqttTopicOut, Encoding.UTF8.GetBytes(msg), MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE, false);
             Debug.Log("Sent example message: " + msg);
         }

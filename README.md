@@ -61,39 +61,30 @@ You can control Position, Rotation, Scale (Zoom), and Continuous Rotation Speed.
 - **scale**: (Optional) Updates local scale. Set to > 0.
 - **rotationSpeed**: (Optional) Sets a continuous rotation speed (degrees/second). Set to `0,0,0` to stop.
 
-#### 🌡️ Thermometer Control
+#### 🎛️ Gauge Control (Universal)
 
-To control the thermometer needle smoothly:
+To control any gauge (thermometer, manometer, speedometer...), use the **`gauge_value`** key.
 
 ```json
 {
   "targetName": "thermometer",
-  "temperature": 22.5
+  "gauge_value": 22.5
 }
 ```
 
-- **temperature**: Value in °C (0 to 30).
-- The script looks for a child object named **"Pointer"** inside the target and rotates it on the Y-axis.
-- The movement is **interpolated (smooth)** for a realistic effect.
+- **gauge_value**: The value to apply (e.g., °C, Bar, km/h).
+- The script looks for your calibration (Min/Max/Angle) in the **Gauge Bindings** list.
+- If no binding is found, it defaults to 0-100 range.
+- It rotates the child object named **"Pointer"** inside your target.
 
-![Thermometer Setup](Assets/images/thermometer.png)
-
-#### ⏲️ Pressure Gauge (Manometer) Control
-
-Works exactly like the thermometer but for pressure:
+*Example for pressure:*
 
 ```json
 {
   "targetName": "manometer",
-  "pressure": 5.0
+  "gauge_value": 5.0
 }
 ```
-
-- **pressure**: Value in Bar (0 to 10).
-- Looks for a child named **"Pointer"** and rotates it.
-- Default scaling: 10 Bar = 180 degrees rotation.
-
-- Default scaling: 10 Bar = 180 degrees rotation.
 
 ### 6. Gauge Bindings (Dedicated Topics)
 
