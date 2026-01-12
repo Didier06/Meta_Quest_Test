@@ -150,6 +150,10 @@ public class MqttManager : MonoBehaviour
                 topics.Add(mqttTopic);
                 qos.Add(MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE);
 
+                // Subscribe to Pendulum Input
+                topics.Add(pendulumInputTopic);
+                qos.Add(MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE);
+
                 // Subscribe to all Gauge Bindings
                 foreach (var binding in gaugeBindings)
                 {
@@ -184,14 +188,14 @@ public class MqttManager : MonoBehaviour
         string topic = e.Topic;
 
         // Dispatch based on topic
-        if (topic == mqttTopic)
+        if (topic == mqttTopic || topic == pendulumInputTopic)
         {
-            // Main JSON Channel
+            // Main JSON Channel OR Pendulum Input
             messageQueue.Enqueue(msg);
         }
         else
         {
-            // Check bindings
+        // Check bindings
             foreach (var binding in gaugeBindings)
             {
                 if (binding.topic == topic)
@@ -208,6 +212,9 @@ public class MqttManager : MonoBehaviour
         }
     }
 
+    [Header("Input Topics")]
+    public string pendulumInputTopic = "FABLAB_21_22/Unity/Pendule/in";
+
     void Update()
     {
         if (processMessages && !messageQueue.IsEmpty)
@@ -223,6 +230,12 @@ public class MqttManager : MonoBehaviour
                 if (msg.StartsWith("BINDING|"))
                 {
                     ProcessBindingMessage(msg);
+                }
+                else if (msg.Contains("angle_init")) // Quick check for pendulum message if topic matching is complex in queue
+                {
+                     //Ideally we shoud pass topic in queue tuple, but for now lets check content
+                     ProcessPendulumMessage(msg);
+                     ProcessMessage(msg); // Also standard process
                 }
                 else
                 {
@@ -503,6 +516,66 @@ public class MqttManager : MonoBehaviour
         return null;
     }
 
+    void ProcessPendulumMessage(string json)
+    {
+        var reporter = FindFirstObjectByType<PendulumReporter>();
+        if (reporter == null) return;
+
+        // 1. Physics (m, alpha, fs) - UPDATE FIRST
+        float? m = null, alpha = null, fs = null;
+        
+        // Check "m" (Mass)
+        if (ExtractFloat(json, "\"m\"", out float massVal)) m = massVal;
+        else if (ExtractFloat(json, "m", out massVal)) m = massVal; 
+
+        // Check "alpha" (Angular Damping)
+        if (ExtractFloat(json, "alpha", out float aVal)) alpha = aVal;
+
+        // Check "fs" (Solid Friction)
+        if (ExtractFloat(json, "fs", out float fVal)) fs = fVal;
+
+        // Apply Physics immediately so they are captured correctly by the Reset Routine if it runs
+        if (m.HasValue || alpha.HasValue || fs.HasValue)
+        {
+            reporter.UpdatePhysics(m, alpha, fs);
+        }
+
+        // 2. Angle Init (Check "angle_init") - RESET AFTER PHYSICS
+        if (ExtractFloat(json, "angle_init", out float angle))
+        {
+            reporter.SetInitialAngle(angle);
+        }
+    }
+
+    /// <summary>
+    /// Simple JSON value extractor to avoid overhead of full struct parsing for partial updates.
+    /// Looks for "key": value
+    /// </summary>
+    bool ExtractFloat(string json, string key, out float result)
+    {
+        result = 0f;
+        int index = json.IndexOf(key);
+        if (index == -1) return false;
+
+        // Find colon after key
+        int colon = json.IndexOf(':', index);
+        if (colon == -1) return false;
+
+        // Find end of value (comma or brace)
+        int comma = json.IndexOf(',', colon);
+        int brace = json.IndexOf('}', colon);
+        
+        int end = -1;
+        if (comma != -1 && brace != -1) end = System.Math.Min(comma, brace);
+        else if (comma != -1) end = comma;
+        else end = brace;
+
+        if (end == -1) return false;
+
+        string valStr = json.Substring(colon + 1, end - colon - 1).Trim();
+        return float.TryParse(valStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out result);
+    }
+
     public void PublishExampleMessage()
     {
         if (client != null && client.IsConnected)
@@ -511,6 +584,22 @@ public class MqttManager : MonoBehaviour
             string msg = "{\"targetName\":\"Cube\", \"position\":{\"x\":0,\"y\":1,\"z\":2}, \"gauge_value\": 50.0}";
             client.Publish(mqttTopicOut, Encoding.UTF8.GetBytes(msg), MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE, false);
             Debug.Log("Sent example message: " + msg);
+        }
+    }
+
+    /// <summary>
+    /// Publishes a custom message to a specific topic using the existing client.
+    /// </summary>
+    public void PublishCustom(string topic, string message)
+    {
+        if (client != null && client.IsConnected)
+        {
+            client.Publish(topic, Encoding.UTF8.GetBytes(message), MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE, false);
+            // Debug.Log($"[MqttManager] Published to {topic}: {message}");
+        }
+        else
+        {
+            // Debug.LogWarning($"[MqttManager] Cannot publish to {topic}, client not connected.");
         }
     }
 
