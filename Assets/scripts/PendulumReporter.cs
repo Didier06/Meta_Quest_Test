@@ -243,28 +243,41 @@ public class PendulumReporter : MonoBehaviour
         }
 
         // 2. Solid Friction via HingeJoint Motor (on Pivot)
-        if (pivotTransform != null && fs.HasValue)
+        // 2. Solid Friction via HingeJoint Motor
+        // User Request: "force is in the hinge of Pendule"
+        if (fs.HasValue)
         {
-            HingeJoint joint = pivotTransform.GetComponent<HingeJoint>();
+            // Try to find hinge on Pendulum first (Most likely setup)
+            HingeJoint joint = pendulumObj != null ? pendulumObj.GetComponent<HingeJoint>() : null;
+            
+            // Fallback: Check Pivot if not found on Pendulum
+            if (joint == null && pivotTransform != null)
+            {
+                joint = pivotTransform.GetComponent<HingeJoint>();
+            }
+
             if (joint != null)
             {
                 if (fs.Value > 0.0001f) // Treat negligible values as 0
                 {
                     joint.useMotor = true;
                     JointMotor motor = joint.motor;
-                    motor.targetVelocity = 0f;       // Brake
-                    motor.force = fs.Value;          // Maximum Friction Torque
-                    joint.motor = motor;             // Apply back
+                    motor.targetVelocity = 0f;       // Brake (Velocity 0)
+                    motor.force = fs.Value;          // Maximum Brake Torque
+                    joint.motor = motor;             // Apply struct back
                 }
                 else
                 {
-                    // If fs is 0, disable the motor (no friction)
+                    // If fs <= 0, disable the motor (free spin)
                     joint.useMotor = false;
+                    JointMotor motor = joint.motor;
+                    motor.force = 0f;                // Clean up force value
+                    joint.motor = motor;
                 }
             }
             else
             {
-                Debug.LogWarning("[PendulumReporter] 'fs' received but no HingeJoint found on Pivot!");
+                Debug.LogWarning("[PendulumReporter] 'fs' received but no HingeJoint found on Pendulum or Pivot!");
             }
         }
 

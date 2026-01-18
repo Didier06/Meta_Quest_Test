@@ -14,8 +14,8 @@ public class MqttManager : MonoBehaviour
     public string mqttBroker = "mqtt.univ-cotedazur.fr";
     public int mqttPort = 1883;
     public bool useEncrypted = false; // Set to true if using SSL (usually port 8883)
-    public string mqttTopic = "FABLAB_21_22/unity/metaquest/in";
-    public string mqttTopicOut = "FABLAB_21_22/unity/metaquest/out";
+    public string mqttTopic = "FABLAB_21_22/Unity/metaquest/in";
+    public string mqttTopicOut = "FABLAB_21_22/Unity/metaquest/out";
     
     [Header("Credentials")]
     public string username = "";
@@ -72,6 +72,18 @@ public class MqttManager : MonoBehaviour
 
     [Header("Gauge Bindings")]
     public List<TopicBinding> gaugeBindings = new List<TopicBinding>();
+
+    [Header("Coupled Pendulums")]
+    public GameObject pendule1;
+    public GameObject pendule2;
+    public string pendulumCouplesTopic = "FABLAB_21_22/Unity/PendulesCouples/out";
+    public string pendulumCouplesInputTopic = "FABLAB_21_22/Unity/PendulesCouples/in";
+    public AngularCoupling couplingScript;
+    public float coupledPublishRate = 0.1f;
+
+    public float offset1 = 0f; // Calibration offset for Pendule1
+    public float offset2 = 0f; // Calibration offset for Pendule2
+    private float nextCoupledPublishTime;
 
     void Start()
     {
@@ -164,6 +176,15 @@ public class MqttManager : MonoBehaviour
                     }
                 }
 
+
+
+                // Subscribe to Coupled Pendulum Input
+                if (!topics.Contains(pendulumCouplesInputTopic))
+                {
+                    topics.Add(pendulumCouplesInputTopic);
+                    qos.Add(MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE);
+                }
+
                 client.Subscribe(topics.ToArray(), qos.ToArray());
 
                 // Send Hello Message
@@ -192,6 +213,11 @@ public class MqttManager : MonoBehaviour
         {
             // Main JSON Channel OR Pendulum Input
             messageQueue.Enqueue(msg);
+        }
+        else if (topic == pendulumCouplesInputTopic)
+        {
+            // Coupled Pendulum Input
+            messageQueue.Enqueue($"COUPLED|{msg}");
         }
         else
         {
@@ -230,6 +256,10 @@ public class MqttManager : MonoBehaviour
                 if (msg.StartsWith("BINDING|"))
                 {
                     ProcessBindingMessage(msg);
+                }
+                else if (msg.StartsWith("COUPLED|"))
+                {
+                    ProcessCoupledInput(msg.Substring(8));
                 }
                 else if (msg.Contains("angle_init")) // Quick check for pendulum message if topic matching is complex in queue
                 {
@@ -288,6 +318,13 @@ public class MqttManager : MonoBehaviour
                 }
             }
             foreach (var t in finished) smoothTargets.Remove(t);
+        }
+
+        // Publish Coupled Pendulum Data
+        if (Time.time >= nextCoupledPublishTime)
+        {
+            PublishCoupledData();
+            nextCoupledPublishTime = Time.time + coupledPublishRate;
         }
     }
 
@@ -608,6 +645,227 @@ public class MqttManager : MonoBehaviour
         if (client != null && client.IsConnected)
         {
             client.Disconnect();
+        }
+    }
+    public enum Axis { X, Y, Z }
+    public Axis coupledRotationAxis = Axis.X;
+    private bool _hasWarnedCoupled = false;
+
+    public bool invert1 = false; // Invert sign for Pendule1
+    public bool invert2 = false; // Invert sign for Pendule2
+    public bool showDebugLogs = false; // Check this to see raw values in Console
+
+    void PublishCoupledData()
+    {
+        if (client == null || !client.IsConnected) return;
+        
+        if (pendule1 == null || pendule2 == null) 
+        {
+            if (!_hasWarnedCoupled)
+            {
+                Debug.LogWarning("[MqttManager] Coupled Pendulums (Pendule1 or Pendule2) are NOT assigned in the Inspector! Coupled data cannot be published.");
+                _hasWarnedCoupled = true;
+            }
+            return;
+        }
+
+        // Try to get HingeJoint for more accurate physics-based angle
+        HingeJoint h1 = pendule1.GetComponent<HingeJoint>();
+        HingeJoint h2 = pendule2.GetComponent<HingeJoint>();
+
+        float theta1, theta2;
+
+        if (h1 != null) theta1 = GetHingeAngle(pendule1.transform, h1);
+        else theta1 = GetAxisAngle(pendule1.transform, coupledRotationAxis);
+
+        if (h2 != null) theta2 = GetHingeAngle(pendule2.transform, h2);
+        else theta2 = GetAxisAngle(pendule2.transform, coupledRotationAxis);
+
+        // Apply offsets
+        theta1 = WrapAngle(theta1 + offset1);
+        theta2 = WrapAngle(theta2 + offset2);
+
+        if (invert1) theta1 = -theta1;
+        if (invert2) theta2 = -theta2;
+
+        // Create JSON
+        string json = $"{{\"temps\": {System.Math.Round(Time.time, 4).ToString(System.Globalization.CultureInfo.InvariantCulture)}, \"theta1\": {System.Math.Round(theta1, 4).ToString(System.Globalization.CultureInfo.InvariantCulture)}, \"theta2\": {System.Math.Round(theta2, 4).ToString(System.Globalization.CultureInfo.InvariantCulture)}}}";
+
+        // Publish
+        client.Publish(pendulumCouplesTopic, Encoding.UTF8.GetBytes(json), MqttMsgBase.QOS_LEVEL_AT_LEAST_ONCE, false);
+    }
+
+    float GetHingeAngle(Transform t, HingeJoint hinge)
+    {
+        // Calculate angle relative to the hinge's start
+        // Problem: HingeJoint doesn't expose "current angle" directly in a simple way without limits.
+        // But we can compare the current local rotation to the "zero" rotation around the axis.
+        
+        // Simple approach: JointAngle() is not a standard Unity API (it's in ArticulationBody). 
+        // For HingeJoint, we usually rely on 'angle' (only valid if limits are used?) 
+        // actually 'hinge.angle' returns the position relative to the rest angle.
+        
+        return hinge.angle;
+    }
+
+    float GetAxisAngle(Transform t, Axis axis)
+    {
+        // Use localEulerAngles to be relative to the parent (The Machine Frame)
+        // This is safer if the machine is moved/rotated in the world.
+        Vector3 rot = t.localEulerAngles;
+        
+        float val = 0f;
+        switch (axis)
+        {
+            case Axis.X: val = rot.x; break;
+            case Axis.Y: val = rot.y; break;
+            case Axis.Z: val = rot.z; break;
+            default: val = rot.z; break;
+        }
+
+        if (showDebugLogs) Debug.Log($"[MqttManager] Raw {t.name} ({axis}): {val}");
+        return val;
+    }
+
+
+
+    float WrapAngle(float a)
+    {
+        a %= 360;
+        if (a > 180) return a - 360;
+        if (a < -180) return a + 360;
+        return a;
+    }
+
+    void ProcessCoupledInput(string json)
+    {
+        // JSON format: {"th1_i": 45, "th2_i": -30, "f": 0.5, "C": 100, "m1": 1.5, "m2": 0.5}
+        // Extract parameters (Optional)
+        float? th1 = null, th2 = null, f = null, C = null, m1 = null, m2 = null;
+
+        if (ExtractFloat(json, "th1_i", out float v1)) th1 = v1;
+        if (ExtractFloat(json, "th2_i", out float v2)) th2 = v2;
+        if (ExtractFloat(json, "f", out float vf)) f = vf;
+        if (ExtractFloat(json, "C", out float vc)) C = vc;
+        if (ExtractFloat(json, "m1", out float vm1)) m1 = vm1;
+        if (ExtractFloat(json, "m2", out float vm2)) m2 = vm2;
+
+        // If any parameter is present, trigger the reset/update routine
+        if (th1.HasValue || th2.HasValue || f.HasValue || C.HasValue || m1.HasValue || m2.HasValue)
+        {
+            StartCoroutine(ResetCoupledPhysicsRoutine(th1, th2, f, C, m1, m2));
+        }
+    }
+
+    System.Collections.IEnumerator ResetCoupledPhysicsRoutine(float? th1, float? th2, float? f, float? C, float? m1, float? m2)
+    {
+        if (pendule1 == null || pendule2 == null) yield break;
+
+        Rigidbody rb1 = pendule1.GetComponent<Rigidbody>();
+        Rigidbody rb2 = pendule2.GetComponent<Rigidbody>();
+
+        // 1. Stop Physics & Reset Velocities
+        if (rb1) { rb1.isKinematic = true; rb1.linearVelocity = Vector3.zero; rb1.angularVelocity = Vector3.zero; }
+        if (rb2) { rb2.isKinematic = true; rb2.linearVelocity = Vector3.zero; rb2.angularVelocity = Vector3.zero; }
+
+        yield return new WaitForFixedUpdate();
+
+        // 2. Apply Physics Parameters (Immediate)
+        // Linear Damping (f)
+        if (f.HasValue)
+        {
+            if (rb1) rb1.linearDamping = f.Value;
+            if (rb2) rb2.linearDamping = f.Value;
+        }
+
+        // Mass (m1, m2)
+        if (m1.HasValue && rb1) rb1.mass = m1.Value;
+        if (m2.HasValue && rb2) rb2.mass = m2.Value;
+
+        // Coupling Constant (C)
+        if (C.HasValue && couplingScript != null)
+        {
+            couplingScript.C = C.Value;
+        }
+
+        // 3. Smooth Transition for Angles
+        // Only if angles are requested
+        if (th1.HasValue || th2.HasValue)
+        {
+            float duration = 2.0f; // Seconds
+            float elapsed = 0f;
+
+            // Capture start angles (Physics Hinge Angle or 0)
+            float start1 = 0f;
+            float start2 = 0f;
+
+            HingeJoint h1 = pendule1.GetComponent<HingeJoint>();
+            HingeJoint h2 = pendule2.GetComponent<HingeJoint>();
+
+            if (h1) start1 = h1.angle;
+            else start1 = WrapAngle(pendule1.transform.localEulerAngles.x);
+
+            if (h2) start2 = h2.angle;
+            else start2 = WrapAngle(pendule2.transform.localEulerAngles.x);
+
+            // Targets (use current if not provided)
+            float target1 = th1.HasValue ? th1.Value : start1;
+            float target2 = th2.HasValue ? th2.Value : start2;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / duration);
+                
+                // Smooth easing
+                t = t * t * (3f - 2f * t);
+
+                float currentAngleSet1 = Mathf.Lerp(start1, target1, t);
+                float currentAngleSet2 = Mathf.Lerp(start2, target2, t);
+
+                // Apply rotation frame by frame
+                ApplyHingeRotation(pendule1, currentAngleSet1);
+                ApplyHingeRotation(pendule2, currentAngleSet2);
+
+                yield return null;
+            }
+            
+            // Ensure final exact value
+            ApplyHingeRotation(pendule1, target1);
+            ApplyHingeRotation(pendule2, target2);
+        }
+
+        yield return new WaitForFixedUpdate();
+
+        // 4. Restart Physics
+        if (rb1) { rb1.isKinematic = false; rb1.WakeUp(); }
+        if (rb2) { rb2.isKinematic = false; rb2.WakeUp(); }
+    }
+
+    void ApplyHingeRotation(GameObject pendule, float targetAngle)
+    {
+        HingeJoint hinge = pendule.GetComponent<HingeJoint>();
+        if (hinge != null)
+        {
+            // Current angle from hinge (signed)
+            float current = hinge.angle;
+            float delta = targetAngle - current;
+            
+            // Rotate the transform around the hinge anchor/axis
+            Vector3 worldAnchor = pendule.transform.TransformPoint(hinge.anchor);
+            Vector3 worldAxis = pendule.transform.TransformDirection(hinge.axis);
+            
+            pendule.transform.RotateAround(worldAnchor, worldAxis, delta);
+        }
+        else
+        {
+            // Fallback: simple local rotation on X (assuming default setup)
+             // This is less accurate if pivot is not origin
+             float current = pendule.transform.localEulerAngles.x; 
+             // Wrap current to -180/180 for delta calc
+             if (current > 180) current -= 360;
+             float delta = targetAngle - current;
+             pendule.transform.Rotate(delta, 0, 0, Space.Self);
         }
     }
 }

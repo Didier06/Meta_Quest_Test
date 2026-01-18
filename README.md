@@ -38,8 +38,8 @@ The project is built upon Meta's modular "Building Blocks" architecture:
 
 This project includes a powerful **MQTT Manager** allowing you to control any object in the scene remotely by sending JSON messages.
 
-- **Topic IN**: `FABLAB_21_22/unity/metaquest/in` (Receives commands)
-- **Topic OUT**: `FABLAB_21_22/unity/metaquest/out` (Sends status/hello)
+- **Topic IN**: `FABLAB_21_22/Unity/metaquest/in` (Receives commands)
+- **Topic OUT**: `FABLAB_21_22/Unity/metaquest/out` (Sends status/hello)
 
 #### Supported JSON Commands
 
@@ -216,3 +216,40 @@ Le message doit être au format JSON. Tous les paramètres sont optionnels et pe
       "fs": 0         // Pas de frottement sec
     }
     ```
+
+## Double Pendule (Coupled Pendulums)
+
+Ce projet supporte la simulation et le contrôle de deux pendules couplés.
+
+### Monitoring Output
+
+Publie les angles des deux pendules.
+
+- **Topic**: `FABLAB_21_22/Unity/PendulesCouples/out`
+- **Format JSON**:
+
+  ```json
+  {
+    "temps": 12.3456,
+    "theta1": 45.1234,
+    "theta2": -12.5678
+  }
+  ```
+
+### Control Input
+
+Contrôle les positions initiales et les paramètres physiques.
+
+- **Topic**: `FABLAB_21_22/Unity/PendulesCouples/in`
+- **Format JSON** (Tous les paramètres sont optionnels) :
+
+  ```json
+  {
+    "th1_i": 90.0,   // Angle Initial Pendule 1 (Degrés)
+    "th2_i": 0.0,    // Angle Initial Pendule 2 (Degrés)
+    "f": 0.5,        // Frottement Fluide (Linear Damping)
+    "C": 100.0,      // Constante de Couplage (Ressort de torsion)
+    "m1": 1.5,       // Masse Pendule 1 (kg)
+    "m2": 0.5        // Masse Pendule 2 (kg)
+  }
+  ```
