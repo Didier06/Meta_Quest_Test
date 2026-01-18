@@ -174,29 +174,29 @@ To run this project, the following packages (often installable via *Meta XR All-
 4. Once in the headset, allow access to spatial data (Passthrough).
 5. Interact with the cubes and sphere: they will fall onto your real floor!
 
-## Configuration du Pendule (via MQTT)
+## Pendulum Configuration (via MQTT)
 
-Le pendule peut être piloté et configuré en temps réel via le topic `FABLAB_21_22/Unity/Pendule/in`.
-Le message doit être au format JSON. Tous les paramètres sont optionnels et peuvent être envoyés ensemble ou séparément.
+The pendulum can be controlled and configured in real-time via the topic `FABLAB_21_22/Unity/Pendule/in`.
+The message must be in JSON format. All parameters are optional and can be sent together or separately.
 
-### Paramètres JSON
+### JSON Parameters
 
-| Clé | Type | Unité / Plage | Description |
+| Key | Type | Unit / Range | Description |
 | :--- | :--- | :--- | :--- |
-| **`angle_init`** | `float` | Degrés (-180 à +180) | Réinitialise la position du pendule. Déclenche une animation de transition douce (2s) avant de relâcher la physique. |
-| **`m`** | `float` | kg (approx) | Définit la **Masse** du pendule (`Rigidbody.mass`). Une masse plus élevée augmente l'inertie. |
-| **`alpha`** | `float` | Unity Linear Drag (0 à infini) | Définit le **Frottement Fluide** (résistance de l'air). <br>Note : Mappé sur `Rigidbody.linearDamping`. Plus la valeur est haute, plus le pendule freine proportionnellement à sa vitesse. Valeurs recommandées : 0.5 à 5 (oscillant), 10+ (très amorti). |
-| **`fs`** | `float` | Couple (N.m) | Définit le **Frottement Solide** (sec) via un frein moteur sur l'axe (`HingeJoint`). <br>- Si `> 0` : Applique un couple de freinage constant. <br>- Si `0` : Désactive complètement le moteur (roue libre). |
+| **`angle_init`** | `float` | Degrees (-180 to +180) | Resets the pendulum position. Triggers a smooth transition animation (2s) before releasing physics. |
+| **`m`** | `float` | kg (approx) | Defines the **Mass** of the pendulum (`Rigidbody.mass`). Higher mass increases inertia. |
+| **`alpha`** | `float` | Unity Linear Drag (0 to infinite) | Defines **Fluid Friction** (air resistance). <br>Note: Mapped to `Rigidbody.linearDamping`. Higher values decelerate the pendulum proportionally to its speed. Recommended values: 0.5 to 5 (oscillating), 10+ (highly damped). |
+| **`fs`** | `float` | Torque (N.m) | Defines **Solid Friction** (dry) via a motor brake on the axis (`HingeJoint`). <br>- If `> 0`: Applies a constant braking torque. <br>- If `0`: Completely disables the motor (freewheel). |
 
-### Exemples de Payload
+### Payload Examples
 
-- **Reset simple :**
+- **Simple Reset:**
 
     ```json
     { "angle_init": -45.0 }
     ```
 
-- **Configuration Physique complète :**
+- **Full Physics Configuration:**
 
     ```json
     {
@@ -206,27 +206,27 @@ Le message doit être au format JSON. Tous les paramètres sont optionnels et pe
     }
     ```
 
-- **Reset avec changement de physique (Mega-Message) :**
+- **Reset with Physics Change (Mega-Message):**
 
     ```json
     {
       "angle_init": 90,
       "m": 1.0,
-      "alpha": 20.0,  // Fort amortissement fluide
-      "fs": 0         // Pas de frottement sec
+      "alpha": 20.0,  // Strong fluid damping
+      "fs": 0         // No dry friction
     }
     ```
 
-## Double Pendule (Coupled Pendulums)
+## Double Pendulum (Coupled Pendulums)
 
-Ce projet supporte la simulation et le contrôle de deux pendules couplés.
+This project supports the simulation and control of two coupled pendulums.
 
 ### Monitoring Output
 
-Publie les angles des deux pendules.
+Publishes the angles of both pendulums.
 
 - **Topic**: `FABLAB_21_22/Unity/PendulesCouples/out`
-- **Format JSON**:
+- **JSON Format**:
 
   ```json
   {
@@ -238,18 +238,18 @@ Publie les angles des deux pendules.
 
 ### Control Input
 
-Contrôle les positions initiales et les paramètres physiques.
+Controls initial positions and physics parameters.
 
 - **Topic**: `FABLAB_21_22/Unity/PendulesCouples/in`
-- **Format JSON** (Tous les paramètres sont optionnels) :
+- **JSON Format** (All parameters are optional):
 
   ```json
   {
-    "th1_i": 90.0,   // Angle Initial Pendule 1 (Degrés)
-    "th2_i": 0.0,    // Angle Initial Pendule 2 (Degrés)
-    "f": 0.5,        // Frottement Fluide (Linear Damping)
-    "C": 100.0,      // Constante de Couplage (Ressort de torsion)
-    "m1": 1.5,       // Masse Pendule 1 (kg)
-    "m2": 0.5        // Masse Pendule 2 (kg)
+    "th1_i": 90.0,   // Initial Angle Pendulum 1 (Degrees)
+    "th2_i": 0.0,    // Initial Angle Pendulum 2 (Degrees)
+    "f": 0.5,        // Fluid Friction (Linear Damping)
+    "C": 100.0,      // Coupling Constant (Torsion Spring)
+    "m1": 1.5,       // Mass Pendulum 1 (kg)
+    "m2": 0.5        // Mass Pendulum 2 (kg)
   }
   ```
